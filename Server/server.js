@@ -38,6 +38,7 @@ const corsOptions = {
         if (!origin) return callback(null, true);
 
         const allowedOrigins = [
+            "https://devconnect-client.onrender.com",
             "https://devconnect-server-w3m5.onrender.com",
             "http://localhost:3000",
             "https://localhost:3000",
