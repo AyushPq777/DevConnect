@@ -19,6 +19,7 @@ console.log('✅ Routes loaded:');
 console.log('- authRoutes:', !!authRoutes);
 console.log('- userRoutes:', !!userRoutes);
 console.log('- postRoutes:', !!postRoutes);
+
 // Socket handlers
 import { setupSocketHandlers } from './src/socket/socketHandlers.js';
 
@@ -29,18 +30,37 @@ dotenv.config();
 
 const app = express();
 const httpServer = createServer(app);
+
+// CORS configuration
+const corsOptions = {
+    origin: function (origin, callback) {
+        // Allow requests with no origin (like mobile apps, Postman, etc.)
+        if (!origin) return callback(null, true);
+
+        const allowedOrigins = [
+            "https://devconnect-server-w3m5.onrender.com",
+            "http://localhost:3000",
+            "https://localhost:3000",
+            process.env.CLIENT_URL
+        ].filter(Boolean); // Remove any undefined values
+
+        if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"]
+};
+
 const io = new Server(httpServer, {
-    cors: {
-        origin: process.env.CLIENT_URL || "http://localhost:3000",
-        methods: ["GET", "POST"]
-    }
+    cors: corsOptions
 });
 
 // Middleware
-app.use(cors({
-    origin: process.env.CLIENT_URL || "http://localhost:3000",
-    credentials: true
-}));
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -56,20 +76,47 @@ app.use('/api/jobs', jobRoutes);
 
 // Test route
 app.get('/api/test', (req, res) => {
-    res.json({ message: 'DevConnect API is running!' });
+    res.json({
+        message: 'DevConnect API is running!',
+        environment: process.env.NODE_ENV,
+        timestamp: new Date().toISOString()
+    });
+});
+
+// Health check route for Render
+app.get('/health', (req, res) => {
+    res.status(200).json({
+        status: 'OK',
+        service: 'DevConnect API',
+        environment: process.env.NODE_ENV,
+        timestamp: new Date().toISOString()
+    });
 });
 
 // Socket.io setup
 setupSocketHandlers(io);
 
 // Database connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/devconnect')
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/devconnect';
+
+mongoose.connect(MONGODB_URI)
     .then(() => console.log('✅ Connected to MongoDB'))
-    .catch(err => console.error('❌ MongoDB connection error:', err));
+    .catch(err => {
+        console.error('❌ MongoDB connection error:', err);
+        process.exit(1);
+    });
+
+// Error handling for unhandled promise rejections
+process.on('unhandledRejection', (err) => {
+    console.error('❌ Unhandled Promise Rejection:', err);
+    process.exit(1);
+});
 
 const PORT = process.env.PORT || 5000;
 
 httpServer.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
-    console.log(`🔗 MongoDB: ${process.env.MONGODB_URI ? 'Connected' : 'Local'}`);
+    console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`🔗 MongoDB: ${MONGODB_URI.includes('localhost') ? 'Local' : 'Cloud'}`);
+    console.log(`📎 Server URL: https://devconnect-server-w3m5.onrender.com`);
 });
